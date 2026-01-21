@@ -6,62 +6,19 @@ local options = {}
 
 local separator = package.config:sub(1, 1) == "\\" and "\\" or "/"
 
--- Find the plugin directory from the plugin list
+-- Get plugin directory from current file path
 local function get_plugin_dir()
-  for _, plugin in ipairs(wez.plugin.list()) do
-    if plugin.plugin_dir:find("bar") then
-      return plugin.plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
-    end
-  end
-  return wez.plugin.list()[1].plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
+  local info = debug.getinfo(1, "S")
+  local script_path = info.source:match("@?(.*)")
+  -- script_path is .../plugin/init.lua, we want .../
+  return script_path:gsub("[/\\]plugin[/\\]init%.lua$", "")
 end
 
 local plugin_dir = get_plugin_dir()
 
----checks if the plugin directory exists
----@param path string
----@return boolean
-local function directory_exists(path)
-  local success, result = pcall(wez.read_dir, plugin_dir .. path)
-  return success and result
-end
-
----returns the name of the package, used when requiring modules
----@return string
-local function get_require_path()
-  -- Check common patterns for local file:// plugins
-  local patterns = {
-    "filesZssZs",
-    "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDswezterm",
-    "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDsweztermsZs",
-  }
-
-  for _, pattern in ipairs(patterns) do
-    if directory_exists(pattern) then
-      return pattern
-    end
-  end
-
-  -- Fallback: try to find any bar-related directory
-  local success, dirs = pcall(wez.read_dir, plugin_dir)
-  if success and dirs then
-    for _, dir in ipairs(dirs) do
-      if dir:find("bar") then
-        return dir:match("([^/\\]+)$")
-      end
-    end
-  end
-
-  return "bar"
-end
-
-local require_path = get_require_path()
-
 package.path = package.path
   .. ";"
   .. plugin_dir
-  .. separator
-  .. require_path
   .. separator
   .. "plugin"
   .. separator
