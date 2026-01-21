@@ -6,12 +6,14 @@ local options = {}
 
 local separator = package.config:sub(1, 1) == "\\" and "\\" or "/"
 
--- Get plugin directory from current file path
+-- Find this plugin's directory (bar.wezterm encoded as barsDswezterm)
 local function get_plugin_dir()
-  local info = debug.getinfo(1, "S")
-  local script_path = info.source:match("@?(.*)")
-  -- script_path is .../plugin/init.lua, we want .../
-  return script_path:gsub("[/\\]plugin[/\\]init%.lua$", "")
+  for _, plugin in ipairs(wez.plugin.list()) do
+    if plugin.plugin_dir:find("barsDswezterm") then
+      return plugin.plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
+    end
+  end
+  return wez.plugin.list()[1].plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
 end
 
 local plugin_dir = get_plugin_dir()
