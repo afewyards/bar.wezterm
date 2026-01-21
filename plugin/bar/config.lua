@@ -7,13 +7,16 @@ local M = {}
 
 ---@class option.separator
 ---@field space number
+---@field icon_space number
 ---@field left_icon string
 ---@field right_icon string
 ---@field field_icon string
+---@field icon_position "left" | "right"
 
 ---@class option.tabs
 ---@field active_tab_fg number
 ---@field inactive_tab_fg number
+---@field show_cwd boolean
 
 ---@class option.module
 ---@field enabled boolean
@@ -37,6 +40,7 @@ local M = {}
 ---@field clock option.clock
 ---@field cwd option.module
 ---@field spotify option.spotify
+---@field battery option.module
 
 ---@class option.padding.tabs
 ---@field left number
@@ -64,15 +68,18 @@ M.options = {
   },
   separator = {
     space = 1,
+    icon_space = 1,
     left_icon = wez.nerdfonts.fa_long_arrow_right,
     right_icon = wez.nerdfonts.fa_long_arrow_left,
     field_icon = wez.nerdfonts.indent_line,
+    icon_position = "right",
   },
   modules = {
     tabs = {
       active_tab_fg = 4,
       inactive_tab_fg = 6,
       new_tab_fg = 2,
+      show_cwd = false,
     },
     workspace = {
       enabled = true,
@@ -114,6 +121,11 @@ M.options = {
       enabled = true,
       icon = wez.nerdfonts.oct_file_directory,
       color = 7,
+    },
+    battery = {
+      enabled = true,
+      icon = wez.nerdfonts.fa_battery_full,
+      color = 3,
     },
     spotify = {
       enabled = false,

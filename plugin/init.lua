@@ -5,7 +5,18 @@ local M = {}
 local options = {}
 
 local separator = package.config:sub(1, 1) == "\\" and "\\" or "/"
-local plugin_dir = wez.plugin.list()[1].plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
+
+-- Find the plugin directory from the plugin list
+local function get_plugin_dir()
+  for _, plugin in ipairs(wez.plugin.list()) do
+    if plugin.plugin_dir:find("bar") then
+      return plugin.plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
+    end
+  end
+  return wez.plugin.list()[1].plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
+end
+
+local plugin_dir = get_plugin_dir()
 
 ---checks if the plugin directory exists
 ---@param path string
@@ -18,16 +29,39 @@ end
 ---returns the name of the package, used when requiring modules
 ---@return string
 local function get_require_path()
-  local path = "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDswezterm"
-  local path_trailing_slash = "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDsweztermsZs"
-  return directory_exists(path_trailing_slash) and path_trailing_slash or path
+  -- Check common patterns for local file:// plugins
+  local patterns = {
+    "filesZssZs",
+    "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDswezterm",
+    "httpssCssZssZsgithubsDscomsZsadriankarlensZsbarsDsweztermsZs",
+  }
+
+  for _, pattern in ipairs(patterns) do
+    if directory_exists(pattern) then
+      return pattern
+    end
+  end
+
+  -- Fallback: try to find any bar-related directory
+  local success, dirs = pcall(wez.read_dir, plugin_dir)
+  if success and dirs then
+    for _, dir in ipairs(dirs) do
+      if dir:find("bar") then
+        return dir:match("([^/\\]+)$")
+      end
+    end
+  end
+
+  return "bar"
 end
+
+local require_path = get_require_path()
 
 package.path = package.path
   .. ";"
   .. plugin_dir
   .. separator
-  .. get_require_path()
+  .. require_path
   .. separator
   .. "plugin"
   .. separator
@@ -39,6 +73,27 @@ local tabs = require "bar.tabs"
 local user = require "bar.user"
 local spotify = require "bar.spotify"
 local paths = require "bar.paths"
+
+---get battery info with appropriate icon
+---@return string, string
+local function get_battery()
+  local battery_info = wez.battery_info()
+  if #battery_info > 0 then
+    local charge = battery_info[1].state_of_charge * 100
+    local icon = wez.nerdfonts.fa_battery_full
+    if charge < 10 then
+      icon = wez.nerdfonts.fa_battery_empty
+    elseif charge < 35 then
+      icon = wez.nerdfonts.fa_battery_quarter
+    elseif charge < 65 then
+      icon = wez.nerdfonts.fa_battery_half
+    elseif charge < 90 then
+      icon = wez.nerdfonts.fa_battery_three_quarters
+    end
+    return string.format('%.0f%%', charge), icon
+  end
+  return "", wez.nerdfonts.fa_battery_full
+end
 
 ---conforming to https://github.com/wez/wezterm/commit/e4ae8a844d8feaa43e1de34c5cc8b4f07ce525dd
 ---@param c table: wezterm config object
@@ -88,10 +143,20 @@ wez.on("format-tab-title", function(tab, _, _, conf, _, _)
   local palette = conf.resolved_palette
 
   local index = tab.tab_index + 1
+  local title_part = tabs.get_title(tab)
+
+  -- Add cwd if enabled
+  if options.modules.tabs.show_cwd then
+    local cwd = tabs.get_cwd(tab)
+    if cwd and #cwd > 0 then
+      title_part = title_part .. " " .. cwd
+    end
+  end
+
   local offset = #tostring(index) + #options.separator.left_icon + (2 * options.separator.space) + 2
   local title = index
     .. utilities._space(options.separator.left_icon, options.separator.space, nil)
-    .. tabs.get_title(tab)
+    .. title_part
 
   local width = conf.tab_max_width - offset
   if #title > conf.tab_max_width then
@@ -179,29 +244,45 @@ wez.on("update-status", function(window, pane)
       func = function()
         return spotify.get_currently_playing(options.modules.spotify.max_width, options.modules.spotify.throttle)
       end,
+      get_icon = function() return options.modules.spotify.icon end,
     },
     {
       name = "username",
       func = function()
         return user.username
       end,
+      get_icon = function() return options.modules.username.icon end,
     },
     {
       name = "hostname",
       func = function()
         return wez.hostname()
       end,
+      get_icon = function() return options.modules.hostname.icon end,
     },
     {
       name = "clock",
       func = function()
         return wez.time.now():format(options.modules.clock.format)
       end,
+      get_icon = function() return options.modules.clock.icon end,
     },
     {
       name = "cwd",
       func = function()
         return paths.get_cwd(pane, true)
+      end,
+      get_icon = function() return options.modules.cwd.icon end,
+    },
+    {
+      name = "battery",
+      func = function()
+        local charge, _ = get_battery()
+        return charge
+      end,
+      get_icon = function()
+        local _, icon = get_battery()
+        return icon
       end,
     },
   }
@@ -214,13 +295,23 @@ wez.on("update-status", function(window, pane)
     end
     local text = func()
     if #text > 0 then
-      table.insert(right_cells, { Foreground = { Color = palette.ansi[options.modules[name].color] } })
-      table.insert(right_cells, { Text = text })
-      table.insert(right_cells, { Foreground = { Color = palette.brights[1] } })
-      table.insert(right_cells, {
-        Text = utilities._space(options.separator.right_icon, options.separator.space, nil)
-          .. options.modules[name].icon,
-      })
+      local icon_spacing = string.rep(" ", options.separator.icon_space)
+      local icon = callback.get_icon()
+
+      if options.separator.icon_position == "left" then
+        -- Icon before text: "🕐  Wed 14:30"
+        table.insert(right_cells, { Foreground = { Color = palette.ansi[options.modules[name].color] } })
+        table.insert(right_cells, { Text = icon .. icon_spacing .. text })
+      else
+        -- Icon after text (default): "Wed 14:30 🕐"
+        table.insert(right_cells, { Foreground = { Color = palette.ansi[options.modules[name].color] } })
+        table.insert(right_cells, { Text = text })
+        table.insert(right_cells, { Foreground = { Color = palette.brights[1] } })
+        table.insert(right_cells, {
+          Text = utilities._space(options.separator.right_icon, options.separator.space, nil)
+            .. icon_spacing .. icon .. icon_spacing,
+        })
+      end
       table.insert(right_cells, { Text = utilities._space(options.separator.field_icon, options.separator.space, nil) })
     end
     ::continue::
