@@ -10,10 +10,10 @@ local separator = package.config:sub(1, 1) == "\\" and "\\" or "/"
 local function get_plugin_dir()
   for _, plugin in ipairs(wez.plugin.list()) do
     if plugin.plugin_dir:find("barsDswezterm") then
-      return plugin.plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
+      return plugin.plugin_dir
     end
   end
-  return wez.plugin.list()[1].plugin_dir:gsub(separator .. "[^" .. separator .. "]*$", "")
+  return wez.plugin.list()[1].plugin_dir
 end
 
 local plugin_dir = get_plugin_dir()
